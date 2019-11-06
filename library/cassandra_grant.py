@@ -14,9 +14,9 @@ description:
     - Related Docs: https://docs.datastax.com/en/cql/3.3/cql/cql_reference/grant_r.html
 author: "Sam Adams"
 options:
-  permission:
+  permissions:
     description:
-      - what permission to grant
+      - what permissions to grant
     required: true
     choices: ["all", "create", "alter", "drop", "select", "modify", "authorize"]
   keyspaces:
@@ -38,7 +38,7 @@ options:
     required: true
   inherit_role:
     description:
-      - which role permission this role should inherit (no keyspace required)
+      - which role permissions this role should inherit (no keyspace required)
       - requires that the role already exists
     required: true
   login_hosts:
@@ -70,11 +70,14 @@ notes:
 '''
 
 EXAMPLES = '''
-# Grant select for all keyspaces
-- cassandra_grant: permission='select' all_keyspaces=True role=read_only login_hosts=localhost login_pass=cassandra login_user=cassandra
+# Grant select,alter for all keyspaces
+- cassandra_grant: permissions=[select,alter] all_keyspaces=True role=read_only login_hosts=localhost login_pass=cassandra login_user=cassandra
+
+# Grant alter for foo keyspace
+- cassandra_grant: permissions=alter keyspaces=foo role=read_write login_hosts=localhost login_pass=cassandra login_user=cassandra
 
 # Revoke modify permission to foo keyspace
-- cassandra_grant: mode=revoke permission=modify keyspaces=[foo,bar] role=no_modify_foo login_hosts=localhost login_pass=cassandra login_user=cassandra
+- cassandra_grant: mode=revoke permissions=[modify,select] keyspaces=[foo,bar] role=no_modify_foo login_hosts=localhost login_pass=cassandra login_user=cassandra
 
 # Inherit roles
 - cassandra_grant: mode=grant inherit_role=read_only role=my_user_role login_hosts=localhost login_pass=cassandra login_user=cassandra
@@ -141,37 +144,36 @@ def assign_role(session, check_mode, is_revoke, inherit_role, role):
     return True
 
 
-def grant_role_permission(session, in_check_mode, is_revoke, permission, all_keyspaces, keyspaces, role):
-    permission = permission.upper()
-    if is_revoke and all_keyspaces:
-        # revoking for all keyspaces
-        query = REVOKE_PERMISSION_FROM_ROLE_FOR_ALL_KESYPACES_FORMAT.format(permission=permission)
-    elif all_keyspaces:
-        # granting for all keyspaces
-        query = GRANT_PERMISSION_TO_ROLE_FOR_ALL_KESYPACES_FORMAT.format(permission=permission)
-    elif is_revoke:
-        # revoking for a specific keyspace
-        for keyspace in keyspaces:
-            query = REVOKE_PERMISSION_FROM_ROLE_FOR_KESYPACE_FORMAT.format(permission=permission, keyspace=keyspace)
-            if not in_check_mode:
-                session.execute(query, {'role': role})
-        return True
-    else:
-        # granting for a specific keyspace
-        for keyspace in keyspaces:
-            query = GRANT_PERMISSION_TO_ROLE_FOR_KESYPACE_FORMAT.format(permission=permission, keyspace=keyspace)
-            if not in_check_mode:
-                session.execute(query, {'role': role})
-        return True
+def grant_role_permission(session, in_check_mode, is_revoke, permissions, all_keyspaces, keyspaces, role):
 
-    if not in_check_mode:
-        session.execute(query, {'role': role})
+    for permission in permissions:
+        permission = permission.upper()
+        if is_revoke and all_keyspaces:
+            # revoking for all keyspaces
+            query = REVOKE_PERMISSION_FROM_ROLE_FOR_ALL_KESYPACES_FORMAT.format(permission=permission)
+        elif all_keyspaces:
+            # granting for all keyspaces
+            query = GRANT_PERMISSION_TO_ROLE_FOR_ALL_KESYPACES_FORMAT.format(permission=permission)
+        elif is_revoke:
+            # revoking for a specific keyspace
+            for keyspace in keyspaces:
+                query = REVOKE_PERMISSION_FROM_ROLE_FOR_KESYPACE_FORMAT.format(permission=permission, keyspace=keyspace)
+                if not in_check_mode:
+                    session.execute(query, {'role': role})
+        else:
+            # granting for a specific keyspace
+            for keyspace in keyspaces:
+                query = GRANT_PERMISSION_TO_ROLE_FOR_KESYPACE_FORMAT.format(permission=permission, keyspace=keyspace)
+                if not in_check_mode:
+                    session.execute(query, {'role': role})
+
+        if not in_check_mode:
+            session.execute(query, {'role': role})
 
     # too complex to work out what will/has changed
     return True
 
-
-def grant_access(session, in_check_mode, permission, role, inherit_role, keyspaces, all_keyspaces, mode):
+def grant_access(session, in_check_mode, permissions, role, inherit_role, keyspaces, all_keyspaces, mode):
     if keyspaces and all_keyspaces:
         raise Exception("Specify a keyspace or all keyspaces, not both")
     if keyspaces and inherit_role:
@@ -185,7 +187,7 @@ def grant_access(session, in_check_mode, permission, role, inherit_role, keyspac
     if inherit_role:
         return assign_role(session, in_check_mode, is_revoke, inherit_role, role)
     else:
-        return grant_role_permission(session, in_check_mode, is_revoke, permission, all_keyspaces, keyspaces, role)
+        return grant_role_permission(session, in_check_mode, is_revoke, permissions, all_keyspaces, keyspaces, role)
 
 
 def main():
@@ -208,9 +210,10 @@ def main():
                 'default': 9042,
                 'type': 'int'
             },
-            'permission': {
+            'permissions': {
                 'required': False,
-                'choices': ["all", "create", "alter", "drop", "select", "modify", "authorize"]
+                'choices': ["all", "create", "alter", "drop", "select", "modify", "authorize"],
+                'type': 'list'
             },
             'role': {
                 'required': True,
@@ -245,7 +248,7 @@ def main():
     login_password = module.params["login_password"]
     login_hosts = module.params["login_hosts"]
     login_port = module.params["login_port"]
-    permission = module.params["permission"]
+    permissions = module.params["permissions"]
     role = module.params["role"]
     inherit_role = module.params["inherit_role"]
     keyspaces = module.params["keyspaces"]
@@ -272,7 +275,7 @@ def main():
                 % e)
 
     try:
-        changed = grant_access(session, module.check_mode, permission, role, inherit_role, keyspaces, all_keyspaces,
+        changed = grant_access(session, module.check_mode, permissions, role, inherit_role, keyspaces, all_keyspaces,
                                mode)
     except Exception, e:
         module.fail_json(msg=str(e))
