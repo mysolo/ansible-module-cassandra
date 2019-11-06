@@ -212,7 +212,7 @@ def main():
             cluster = Cluster(login_hosts, auth_provider=auth_provider, protocol_version=protocol, port=login_port)
         session = cluster.connect()
         session.row_factory = dict_factory
-    except Exception, e:
+    except Exception as e:
         module.fail_json(
             msg="unable to connect to cassandra, check login_user and login_password are correct. Exception message: %s"
                 % e)
@@ -224,12 +224,12 @@ def main():
             changed = True
         try:
             changed = role_save(session, module.check_mode, name, password, enable_login, superuser)
-        except Exception, e:
+        except Exception as e:
             module.fail_json(msg=str(e))
     elif state == "absent":
         try:
             changed = role_delete(session, module.check_mode, name)
-        except Exception, e:
+        except Exception as e:
             module.fail_json(msg=str(e))
 
     module.exit_json(changed=changed, role=name, new_role=new_role )

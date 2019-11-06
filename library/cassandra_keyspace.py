@@ -118,7 +118,7 @@ def main():
                               protocol_version=protocol, port=login_port)
         session = cluster.connect()
         session.row_factory = dict_factory
-    except Exception, e:
+    except Exception as e:
         module.fail_json(
             msg="unable to connect to cassandra, check login_user and " +
                 "login_password are correct. Exception message: %s"

@@ -269,7 +269,7 @@ def main():
             cluster = Cluster(login_hosts, auth_provider=auth_provider, protocol_version=protocol, port=login_port)
         session = cluster.connect()
         session.row_factory = dict_factory
-    except Exception, e:
+    except Exception as e:
         module.fail_json(
             msg="unable to connect to cassandra, check login_user and login_password are correct. Exception message: %s"
                 % e)
@@ -277,7 +277,7 @@ def main():
     try:
         changed = grant_access(session, module.check_mode, permissions, role, inherit_role, keyspaces, all_keyspaces,
                                mode)
-    except Exception, e:
+    except Exception as e:
         module.fail_json(msg=str(e))
     module.exit_json(changed=changed, name=role)
 
